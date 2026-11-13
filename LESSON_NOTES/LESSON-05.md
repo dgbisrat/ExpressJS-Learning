@@ -1,219 +1,292 @@
-> 📌 **Honest note:** You now have **670 XP waiting** in unsolved challenges. Reading gives you ideas, but only coding gives you skill. Here is Lesson 4. Please clear the Boss Battle **before Lesson 5**. 💪
+# 🟡 Level 2, Lesson 5: Built-in and Third-Party Middleware
 
-# 🟡 Level 2, Lesson 4: Middleware
+> 🎮 Same mode: 95% VS Code. ⚡ Mini Challenges in the middle. ⚔️ Main Challenges at the end.
+
+> 📌 Your Lesson 3 Boss Battle and Lesson 4 challenges are still waiting for you. Stuck on one? Struggle 20 minutes, then send me what you tried. 💪
 
 ## 🤔 The "Why"
 
-**Problem:** You want to log every request. Or check a login on 10 different routes. Do you copy the same code into every route?
+In Lesson 4 you wrote your own middleware. But many jobs are the **same in every project**: read JSON, read form data, log requests, allow other websites to call your API.
 
-```js
-app.get("/a", (req, res) => { console.log("log"); res.send("A"); });
-app.get("/b", (req, res) => { console.log("log"); res.send("B"); });  // 😵 repeat, repeat
-```
+Nobody should rewrite these each time. So Express and the community give us **ready-made middleware**.
 
-If you change the log later, you must change it in 10 places. This is how bugs are born.
-
-**Solution:** write the code **once**, and let every request pass through it.
-
-**Middleware** = a function that runs **between** the request arriving and the response being sent. It gets three things: `req`, `res`, and `next`.
+**Built-in** = comes inside Express. **Third-party** = a package you install from npm.
 
 ## 🧠 Mental Model
 
-> ✈️ **An airport.** You (the request) walk through checkpoints: ticket check, then security, then passport, then the gate.
->
-> Each checkpoint can:
-> - **Let you pass** → call `next()`
-> - **Stop you** → send a response (no `next()`)
+> 🧰 **A toolbox for your airport checkpoints.** Each tool is a station you can plug into the line: `express.json()`, `express.urlencoded()`, `morgan`, `cors`.
 
-```
-Request → [logger] → [check key] → [route] → Response
-              ↓            ↓
-           next()       or STOP: "401 Unauthorized"
-```
-
-## 💻 Tiny Example
-
-```js
-const express = require("express");
-const app = express();
-
-// Middleware
-const logger = (req, res, next) => {
-  console.log(`${req.method} ${req.path}`);
-  next();
-};
-
-app.use(logger);
-
-app.get("/", (req, res) => {
-  res.send("Home");
-});
-
-app.get("/about", (req, res) => {
-  res.send("About");
-});
-
-app.listen(3000, () => console.log("Running on 3000"));
-```
-
-Visit `/` and `/about`. Your terminal prints `GET /` and `GET /about`.
-
-**Line by line:**
-- `(req, res, next) => {...}`: the shape of a middleware. The third argument, `next`, is a function.
-- `console.log(...)`: our work. We look at the request.
-- `next()`: "I am done. Pass the request to the **next** thing in the list."
-- `app.use(logger)`: add the function to the list. **For every method and every path.**
-
-## 🔬 Under the Hood
-
-**1. Remember the list from Lesson 1?**
-Express keeps **one list**. Until now, only routes were in it. Now we reveal the full truth: **middleware and routes live in the same list**, in the order you wrote them.
-
-```
-List (top to bottom):
- 1. app.use(logger)       → matches ANY method, ANY path
- 2. app.get("/")          → matches only GET "/"
- 3. app.get("/about")     → matches only GET "/about"
-```
-
-Each item is one **layer**.
-
-**2. What does `next()` really do?**
-It is not magic. It means: *"Express, move to the next layer in the list that matches this request."*
-
-```
-Request: GET /about
-   ↓
-Layer 1: logger matches (any request) → runs → calls next()
-   ↓
-Layer 2: GET "/" ? no ❌ skip
-   ↓
-Layer 3: GET "/about" ? yes ✅ → runs → res.send("About")
-   ↓
-Response closed.
-```
-
-**3. What changes if you never call `next()`?**
-Express waits for you. Nobody moves forward. Nobody sends a response. The browser waits forever. ⏳
-
-**4. `req` and `res` are the SAME objects all the way.**
-The logger and the route get **the same `req`**. So a middleware can add something to `req`, and the route can use it:
-
-```js
-app.use((req, res, next) => {
-  req.startedAt = Date.now();   // add a new property
-  next();
-});
-
-app.get("/", (req, res) => {
-  res.send(`Started at ${req.startedAt}`);  // read it here
-});
-```
-
-This is how login systems work later: a middleware finds the user and saves it on `req.user`. Remember this idea. 🔑
-
-**5. Middleware can STOP the request:**
-
-```js
-const checkKey = (req, res, next) => {
-  if (req.headers["x-api-key"] !== "123") {
-    return res.status(401).send("No key, no entry");
-  }
-  next();
-};
-```
-
-- Wrong key: we send a response and **return**. The route never runs.
-- `return` matters: it ends the function so `next()` below is not called after the response (that would try to continue and cause trouble).
-
-**6. Middleware for ONE route only:**
-Put it **between** the path and the final function:
-
-```js
-app.delete("/books/:id", checkKey, (req, res) => {
-  res.send("Deleted");
-});
-```
-
-Express runs `checkKey` first, then the last function (if `next()` was called). You can put many.
-
-**7. Built-in middleware: `express.json()`**
-In Lesson 2, `POST` just sent text. Real `POST` requests carry **data** in the **body**: for example `{ "title": "Dune" }`.
-
-- **Body** = the data part of a request, sent after the headers.
-- The body arrives in pieces (a stream) as **raw text**. Express does not read it for you by default.
-
-`express.json()` is a middleware that does this work:
-
-```
-Raw text arrives:  '{"title":"Dune"}'
-   ↓ express.json() collects the pieces, runs JSON.parse
-   ↓
-req.body = { title: "Dune" }
-```
-
-```js
-app.use(express.json());
-
-app.post("/books", (req, res) => {
-  res.send(req.body);   // echo back what the client sent
-});
-```
-
-Send this with Thunder Client: method `POST`, body type JSON, `{"title": "Dune"}`.
-
-## 💥 What Breaks?
-
-| If you... | What happens | Why |
-|---|---|---|
-| Forget `next()` in a middleware | Request hangs ⏳ | Nobody continues the chain or responds |
-| Put `app.use(logger)` **after** the routes | The logger does not run for matched routes | First match wins. The route already sent the response |
-| Call `next()` **and** `res.send()` in a middleware, then the route sends too | "Cannot set headers after they are sent" | Two responses for one request (Lesson 2) |
-| Remove `app.use(express.json())` | `req.body` is `undefined` | Nobody turned the raw text into an object |
-| Send a POST body without `Content-Type: application/json` | `req.body` is empty | `express.json()` only parses when this header says JSON |
-| Put `express.json()` **after** the POST route | `req.body` is `undefined` | Order matters. The route ran before the parser |
-
-> 📝 **Note:** The order of `app.use` is one of the most important ideas in Express. Draw the list on paper when something looks strange.
+Every one of them is **just a function** `(req, res, next)`. You already know how they work. 🔑
 
 ---
 
-## 🎮 Your Challenges
+## 🔬 Part 1: A Surprise About Parentheses
 
-Type all the code yourself. ⌨️
+Look closely:
+
+```js
+app.use(express.json());   // with ()
+```
+
+But in Lesson 4 you wrote `app.use(logger)` without `()`. Why?
+
+`express.json()` is a **factory**: a function that **returns** a middleware function. It lets you pass settings.
+
+```js
+function logger(prefix) {            // factory
+  return (req, res, next) => {       // the real middleware
+    console.log(prefix, req.method, req.url);
+    next();
+  };
+}
+
+app.use(logger("[MY APP]"));
+```
+
+- `logger("[MY APP]")` runs **once** at startup. It returns the middleware.
+- The returned function runs **on every request**. It remembers `prefix` (this is a JavaScript **closure**, from your JS course).
+
+**What breaks?** Write `app.use(logger)` without calling it. Express would call `logger(req, res, next)`, so `prefix` becomes the request object, and `next` is never called. The page hangs. ⏳
+
+### ⚡ Mini Challenge 1 (20 XP)
+Create `lesson5.js`. Write a factory `requireHeader(name)`:
+- It returns a middleware that checks `req.get(name)`.
+- If the header is missing → `400` with `{ error: "Missing header: <name>" }`.
+- Otherwise → `next()`.
+
+Use it on `GET /protected` with `requireHeader("x-token")`. Test with and without the header using `curl -H "x-token: abc" ...`.
+
+---
+
+## 🛠️ Part 2: `express.json()` Revisited (Open the Box)
+
+You used it in Lesson 2. Now you can understand it. It does this:
+
+```
+Request arrives with body bytes (in small chunks)
+   ↓
+Check header: Content-Type: application/json ?
+   ├─ NO  → skip, call next()  (req.body stays empty/undefined)
+   └─ YES → collect all chunks → join → JSON.parse → req.body = result → next()
+```
+
+A plain-Node version (type it and run it in a new file `raw-body.js`):
+
+```js
+const http = require("http");
+
+http.createServer((req, res) => {
+  let data = "";
+  req.on("data", (chunk) => { data += chunk; });
+  req.on("end", () => {
+    console.log("Raw text:", data);
+    res.end("got it");
+  });
+}).listen(3001);
+```
+
+- `req.on("data", fn)`: Node calls `fn` each time a **chunk** of the body arrives.
+- `req.on("end", fn)`: Node calls `fn` when **all chunks** have arrived.
+
+Test: `curl -X POST -d "hello" http://localhost:3001`
+
+**What breaks?**
+- Send invalid JSON to an Express app with `express.json()` (`{ bad json`). Express answers with an error (status 400). The JSON parser **fails safely** and the request never reaches your route.
+- Send a body with `Content-Type: text/plain` → the JSON parser skips it. `req.body` is not filled.
+
+### ⚡ Mini Challenge 2 (20 XP)
+1. Run `raw-body.js` and send three different bodies with curl.
+2. Send a **big** body (paste a long text). Do you see "Raw text" printed once or many times? Why? *(Think about chunks and `"end"`.)*
+
+---
+
+## 🛠️ Part 3: `express.urlencoded()` (HTML Forms)
+
+HTML forms don't send JSON. A form sends text like this:
+
+```
+name=Bisrat&age=20
+```
+
+The label is `Content-Type: application/x-www-form-urlencoded`. This middleware reads that text and turns it into an object.
+
+```js
+app.use(express.urlencoded({ extended: false }));
+
+app.post("/contact", (req, res) => {
+  console.log(req.body);
+  res.send(`Thanks, ${req.body.name}!`);
+});
+```
+
+Put this in `public/form.html` (with `express.static` from Lesson 3):
+
+```html
+<form action="/contact" method="POST">
+  <input name="name" placeholder="Your name" />
+  <input name="age" placeholder="Your age" />
+  <button>Send</button>
+</form>
+```
+
+**Key detail:** the `name="..."` attribute on each input becomes the **key** in `req.body`. No `name` → the field is not sent.
+
+**What breaks?**
+- Remove `express.urlencoded(...)` → `req.body` is empty/`undefined`. The raw text arrives but nobody parsed it.
+- Remove `name="age"` from the input → `req.body.age` is `undefined`.
+
+### ⚡ Mini Challenge 3 (20 XP)
+Build the form above. Then:
+1. Submit it and look at `req.body` in the terminal.
+2. Send the same form data with curl: `curl -X POST -d "name=Sara&age=22" http://localhost:3000/contact`
+3. Now send JSON to the same route. Does `req.body` work? Why or why not? *(What do you need so **both** formats work?)*
+
+---
+
+## 🛠️ Part 4: `morgan` (Professional Logging)
+
+Install: `npm install morgan`
+
+```js
+const morgan = require("morgan");
+app.use(morgan("dev"));
+```
+
+Output example:
+
+```
+GET /notes 200 3.512 ms - 120
+```
+
+That's method, URL, status, response time, response size. You wrote something like this in Lesson 4!
+
+**Under the hood:** `morgan` does **not** log at once. It remembers the start time, calls `next()`, then **waits until the response is finished**. Only then it knows the status code and total time, so it prints. 🤯 This is the same idea as the "2 and 4 come at the end" brain stretch from Lesson 4.
+
+**What breaks?** Put `morgan` **below** your routes. Routes that already responded never reach it, so there are **no logs**. Order matters!
+
+### ⚡ Mini Challenge 4 (15 XP)
+1. Add `morgan("dev")` as the very **first** middleware.
+2. Visit a route that exists, one that doesn't (404), and one that sends status 418. Compare the logs.
+3. Change `"dev"` to `"tiny"` and then `"combined"`. What is different?
+
+---
+
+## 🛠️ Part 5: `cors` (Why Your Frontend Can't Reach Your API)
+
+**Problem:** you build a React app on `localhost:5173` and an API on `localhost:3000`. React calls the API and gets this in the browser console:
+
+```
+Blocked by CORS policy
+```
+
+**Why?** Browsers have a safety rule called the **same-origin policy**: a page can only **read** responses from its **own origin**. An origin = protocol + domain + **port**. `5173` and `3000` are different origins.
+
+**The surprising truth:** the request **still reaches your server**, and your server **still runs your route**. The **browser** hides the result from the page. Only the server can give permission, by adding a header:
+
+```
+Access-Control-Allow-Origin: http://localhost:5173
+```
+
+The `cors` package adds this header for you.
+
+Install: `npm install cors`
+
+```js
+const cors = require("cors");
+
+app.use(cors());                                      // allow ANY origin (fine for learning)
+// app.use(cors({ origin: "http://localhost:5173" })) // allow ONE origin (safer)
+```
+
+**Under the hood:** `cors` is a middleware that sets the `Access-Control-Allow-*` headers. For special requests, the browser first sends a "preflight": an `OPTIONS` request that asks "may I?" `cors` answers that with status 204 and **stops the chain** (no `next()`). You now know exactly why!
+
+### ⚡ Mini Challenge 5 (30 XP): Cause the error yourself 😈
+1. In VS Code, create `client/index.html` that does:
+   ```html
+   <script>
+     fetch("http://localhost:3000/notes")
+       .then(r => r.json())
+       .then(data => console.log(data));
+   </script>
+   ```
+2. Open it with the **Live Server** extension (it runs on port 5500).
+3. Open DevTools → Console. See the CORS error. Then check your **server terminal**: did the request arrive? (Yes! That is the surprise.)
+4. Add `app.use(cors())` to the server. Refresh. See the data. ✅
+5. Change it to `cors({ origin: "http://localhost:9999" })`. What happens now? Why?
+
+---
+
+## ⚔️ Main Challenges
 
 **⚔️ Challenge 1: Foundation (30 XP)**
-Write a `logger` middleware. It prints: `[time] METHOD /path`. Use `new Date().toISOString()` for the time. Apply it to **all** routes. Test with two or three routes from earlier lessons.
+Create a **Contact Form app**:
+- `public/index.html` has a form (`name`, `email`, `message`)
+- `POST /contact` saves the form in an array
+- `GET /messages` returns all saved messages as JSON
+- Use `morgan("dev")` and `express.urlencoded`
+- If any field is empty → status `400` with a clear message
 
-**⚔️ Challenge 2: Real-world (50 XP)**
-Write a `checkKey` middleware (use the code idea above). Apply it to **only** `DELETE /books/:id`, not to `GET` routes. Test three cases:
-1. No key header → 401
-2. Wrong key → 401
-3. Key `123` → works
+**⚔️ Challenge 2: Real-world (40 XP)**
+Upgrade your **Notes API** (Lesson 2 and 4):
+- Add `morgan`, `cors` (only for `http://localhost:5500`), and `express.json()`
+- Your own factory `requireHeader("x-api-key")` protects `POST`, `PUT`, `DELETE`
+- Build a small page in `client/` (Live Server) that loads notes with `fetch`
+- Prove that a request from a **different origin** (change the cors origin) gets blocked
 
-Then answer: *why does `GET /books` still work with no key?*
+**⚔️ Challenge 3: Brain stretch (60 XP)** 🧠
+Your API has **no** `cors`. A page on `localhost:5500` runs:
 
-**⚔️ Challenge 3: Stack it all 🧠 (80 XP)**
-Use **Lessons 1 to 4**. Extend your book API:
+```js
+fetch("http://localhost:3000/notes", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ text: "Hello" }),
+});
+```
 
-1. A middleware counts all requests and saves the number on `req.requestNumber`.
-2. `GET /books` sends `{ requestNumber: ..., books: [...] }`.
-3. Add `express.json()`.
-4. `POST /books` reads `req.body`. If `title` or `author` is missing → status **400** with a message. If good → add the book to the array with a new id, and send status **201** with the new book.
-5. Test that `GET /books` shows the new book. ✅
-6. Keep `GET /books/:id`, `GET /books/latest` (careful with order!), and `DELETE` with `checkKey`.
+1. **Predict:** does the note get **added** to the array? Does the page see the response?
+2. How many requests does the server see (look at morgan)? What methods are they?
+3. Test and explain **why**. *(Hint to think about: this is a "non-simple" request. What does the browser send first?)*
+
+**⚔️ Challenge 4: Build Your Own `express.json()` (60 XP)** 🛠️
+In **plain Node** (no Express), write a function `parseJson(req, res, next)` that:
+- reads the body with `req.on("data")` and `req.on("end")`
+- uses `JSON.parse` inside `try/catch`
+- sets `req.body`
+- on bad JSON, sends status `400` and **stops** (no `next()`)
+
+Plug it into your `mini.js` chain from Lesson 4. 🏆
+
+**🐞 Bug Hunt (30 XP):** find **3 bugs** before running:
+
+```js
+const express = require("express");
+const cors = require("cors");
+const app = express();
+
+app.post("/notes", (req, res) => {
+  res.status(201).json({ saved: req.body.text });
+});
+
+app.use(express.json);
+app.use(cors());
+
+app.listen(3000);
+```
+
+*(Look at: order, parentheses, and what happens to the first line of `req.body`.)*
 
 **Bonus XP:**
-- 🏆 +10 XP per challenge with no hint
-- 🧠 +20 XP explain back: *"What is `next()`? What happens if I forget it?"*
+- 🏆 +10 XP per challenge with **no hint**
+- 🧠 +20 XP: explain back: *"What is CORS, and who actually blocks the request: the server or the browser?"*
 
 ## 🪜 Stuck?
 
-Struggle **20 minutes** first:
-- Add `console.log("middleware 1")`, `console.log("middleware 2")`, `console.log("route")`. The **order in the terminal** shows you the real order of the list.
-- Check `console.log(req.body)` right at the top of your POST route.
-- Then ask for `Hint 1`.
+1. Struggle **20 minutes**. Use DevTools **Network** tab and `console.log(req.headers)` to see what really arrives.
+2. Ask: *"What did the browser send? What did the server answer?"*
+3. Then ask me for `Hint 1`.
 
-Commit: `git commit -m "Lesson 4: middleware"` 💾
+Commit: `git commit -m "Lesson 5: builtin and 3rd party middleware"` 💾
 
 ---
 
@@ -221,6 +294,8 @@ Commit: `git commit -m "Lesson 4: middleware"` 💾
 
 | 🏅 Level | ⭐ XP | 🔥 Streak |
 |---|---|---|
-| 1 (Newbie) | 0 (+830 XP waiting for you!) | Day 1 |
+| 2 (Middleware) | 0 (pile waiting: **~1000 XP**) | Day 1 |
 
-**⏭️ Next:** Lesson 5, **Error-handling middleware**: the special 4-argument function, `next(err)`, and how to make your API fail in a clean way. 🛡️
+**⏭️ Next lesson:** Lesson 6, **Error-handling middleware** (the special 4-argument function) and **👹 Boss Battle #2**.
+
+Send me your code and I'll review it. 🚀

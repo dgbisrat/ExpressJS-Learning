@@ -1,203 +1,282 @@
-# 🟢 Level 1, Lesson 3: Route Parameters and Query Strings
+# 🟢 Level 1, Lesson 3: The `res` Object, HTML, and Static Files
+
+> 🎮 Same mode: 95% VS Code. ⚡ Mini Challenges in the middle. ⚔️ Main Challenges and your first **Boss Battle** at the end.
+
+> 📌 I haven't seen your Lesson 2 code yet. That's where the real growth is. Stuck on something? Struggle 20 minutes, then send me what you tried. 💪
 
 ## 🤔 The "Why"
 
-**Problem:** You have 1,000 users. Do you write 1,000 routes?
-
-```js
-app.get("/users/1", ...);
-app.get("/users/2", ...);   // 😵 no way
-```
-
-No. You need **one route** that works for **any** user. You also need a way to filter, like "only users named Ali."
-
-Express gives you two tools:
-
-- **Route parameter**: a *changing part* of the path. Example: `/users/42`
-- **Query string**: extra *options* after a `?`. Example: `/search?name=ali&age=20`
+So far you sent **text** and **JSON**. Real apps also send **web pages**, **CSS files**, **images**, and **redirects**. Also, you must control the **headers** (the labels on a response).
 
 ## 🧠 Mental Model
 
-> 🏠 **Route param = house number.** It tells you *which one* thing you want: `/users/42`.
+> 📦 **A response is a package.**
+> - 🏷️ **Status** = the stamp ("delivered", "not found")
+> - 📝 **Headers** = labels on the box ("this is HTML", "this is 500 bytes")
+> - 🎁 **Body** = what's inside
 >
-> 🏷️ **Query string = sticky notes on the envelope.** They tell you *how* you want it: `?sort=new&limit=5`.
+> You must put the stamp and labels on **before** you ship the box. After shipping, you can't change them.
 
-Rule of thumb:
-- **Which item?** → param
-- **Filter, sort, page?** → query
+```
+HTTP/1.1 200 OK                      ← status
+Content-Type: text/html              ← headers
+Content-Length: 18
 
-## 💻 Tiny Example
+<h1>Hello</h1>                       ← body
+```
+
+**Under the hood:** `res` is Node's own response object, with extra Express methods added on top. Every Express method (`send`, `json`, `redirect`) does the same job in the end: set status, set headers, write the body, call `res.end()`.
+
+---
+
+## 🛠️ Part 1: See the Package
+
+Create `lesson3.js`:
 
 ```js
 const express = require("express");
 const app = express();
 
-// Route param
-app.get("/users/:id", (req, res) => {
-  res.send(`User number ${req.params.id}`);
+app.get("/text", (req, res) => {
+  res.send("Hello");
 });
 
-// Query string
-app.get("/search", (req, res) => {
-  res.send(req.query);
+app.get("/html", (req, res) => {
+  res.send("<h1>Hello</h1>");
+});
+
+app.get("/data", (req, res) => {
+  res.send({ name: "Bisrat" });
 });
 
 app.listen(3000, () => console.log("Running on 3000"));
 ```
 
-**Test it:**
-- `/users/42` → `User number 42`
-- `/search?name=ali&age=20` → `{"name":"ali","age":"20"}`
+Run it. Then look at the **headers** with `curl -i`:
 
-**Line by line:**
-- `:id` in the path: the colon means "this part can be anything. Save it under the name `id`."
-- `req.params`: an object that holds the saved parts. Here: `{ id: "42" }`.
-- `req.query`: an object built from everything after the `?`. Here: `{ name: "ali", age: "20" }`.
-- Passing an object to `res.send` turns it into JSON (Lesson 2).
-
-## 🔬 Under the Hood
-
-**1. How does `:id` match?**
-When you write `"/users/:id"`, Express turns it into a **pattern**, like a stamp with a hole in it:
-
-```
-Pattern:  /users/ [ anything ]
-Request:  /users/42
-                 ↑
-                 fits the hole → save "42" as id
+```bash
+curl -i http://localhost:3000/html
+curl -i http://localhost:3000/data
 ```
 
-Express splits the path by `/`, compares part by part, and fills `req.params`.
+`-i` means "show me the headers too."
 
-**2. How does `req.query` appear?**
-Raw Node gives you only a string: `req.url = "/search?name=ali&age=20"`.
+**What you'll notice:** `res.send()` **looks at what you give it**:
 
-Express cuts the string at `?`, splits the rest by `&`, splits each piece by `=`, and builds an object:
+| You give | `Content-Type` it sets |
+|---|---|
+| String | `text/html` |
+| Object | `application/json` |
 
-```
-"name=ali&age=20"
-      ↓ split by &
-["name=ali", "age=20"]
-      ↓ split by =
-{ name: "ali", age: "20" }
-```
+That's why `<h1>` shows as a big heading in the browser. The browser reads the label and decides how to show the body. No magic. 🔍
 
-This is the parsing work you would do by hand in raw Node. 🎯
+**What breaks?** Change `/html` to use `res.send("<h1>Hello</h1>")` after `res.type("text/plain")`. The browser now shows the raw tags, because the label says "plain text."
 
-**3. Everything is a STRING.**
-Even `42` arrives as `"42"`. Why? The URL is just text. There are no numbers in text. 
-
-```js
-"42" + 1        // "421"  😱 (joins text)
-Number("42") + 1 // 43    ✅
-```
-
-> 📝 **Note:** Always convert with `Number()` when you need math.
-
-**4. The flow for `GET /users/42?sort=new`:**
-
-```
-Client: GET /users/42?sort=new
-   ↓
-Express splits it:  path = "/users/42"   query = "sort=new"
-   ↓
-Walks the route list (method + path, first match wins)
-   ↓
-"/users/:id" matches → req.params = { id: "42" }
-                       req.query  = { sort: "new" }
-   ↓
-Runs your function
-```
-
-Notice: the **query is NOT part of route matching**. `/users/42?sort=new` and `/users/42` both match the same route.
-
-**5. Many params are fine:**
-
-```js
-app.get("/users/:userId/books/:bookId", (req, res) => {
-  res.send(req.params);   // { userId: "5", bookId: "9" }
-});
-```
-
-## 💥 What Breaks?
-
-| If you... | What happens | Why |
-|---|---|---|
-| Visit `/users` (no id) with only `/users/:id` defined | `Cannot GET /users` | The hole needs something in it |
-| Do `req.params.id + 1` for `/users/42` | `"421"` | Params are strings, `+` joins text |
-| Read `req.query.name` when the URL has no `?name=` | `undefined` | Nothing was in the text to parse |
-| Write `/users/:id` **before** `/users/new` and visit `/users/new` | The `:id` route runs with `id = "new"` 😱 | First match wins, and `:id` accepts anything |
-| Visit `/search?tag=a&tag=b` | `tag` becomes an array `["a","b"]` | Same key twice: the parser collects both |
-
-> ⚠️ **Row 4 is a classic real-world bug.** Rule: put **specific** routes before **general** ones.
-
-> 📝 **Note:** To send a status code like 404, use `res.status(404).send("Not found")`. `res.status()` sets the number, then `send` sends it. It returns `res`, so you can chain them.
+### ⚡ Mini Challenge 1 (10 XP)
+1. Make `GET /page` that sends an `<h1>` and a `<p>` in one string.
+2. Run `curl -i` on it. Find the `Content-Type` line.
+3. Now add `res.type("text/plain")` as the first line in the route. Predict what the browser shows. Then test.
 
 ---
 
-## 🎮 Your Challenges
+## 🛠️ Part 2: Status, Headers, Redirect
 
-Type all the code yourself. ⌨️
+```js
+// Custom header
+app.get("/secret", (req, res) => {
+  res.set("X-Made-By", "Bisrat");
+  res.send("Check the headers!");
+});
+
+// Status + body
+app.get("/teapot", (req, res) => {
+  res.status(418).send("I am a teapot ☕");
+});
+
+// Redirect
+app.get("/old", (req, res) => {
+  res.redirect("/new");
+});
+
+app.get("/new", (req, res) => {
+  res.send("Welcome to the new page");
+});
+```
+
+**How redirect works (step by step):**
+
+```
+Browser: GET /old
+Server:  status 302 + header "Location: /new"   (no real body)
+Browser: reads Location, sends a NEW request: GET /new
+Server:  "Welcome to the new page"
+```
+
+Redirect does **not** move anything on the server. It tells the **browser** to ask again somewhere else. Test with `curl -i http://localhost:3000/old` and see the 302 and the `Location` line.
+
+### ⚡ Mini Challenge 2 (15 XP)
+1. Add `GET /go` that redirects to `/secret`.
+2. Run `curl -i` on `/go`. What status code do you see?
+3. Run `curl -iL` on `/go` (the `-L` means "follow redirects"). What changed?
+
+---
+
+## 🛠️ Part 3: Serving Files with `res.sendFile`
+
+Make a folder `public` with a file `hello.html`:
+
+```html
+<!-- public/hello.html -->
+<h1>I am a real file 📄</h1>
+```
+
+Now send it:
+
+```js
+const path = require("path");
+
+app.get("/hello", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "hello.html"));
+});
+```
+
+**Why `path.join(__dirname, ...)`?**
+- `__dirname` = the folder where **this JS file lives**.
+- If you wrote `"public/hello.html"` (a relative path), Node looks from the folder where you **ran** `node`. Run it from another folder and the file is not found.
+- `path.join` builds the path safely for Windows (`\`) and Linux (`/`).
+
+**What breaks?**
+- Use `res.sendFile("public/hello.html")` → error: `path must be absolute`. Express refuses relative paths on purpose, for safety.
+
+### ⚡ Mini Challenge 3 (15 XP)
+1. Create `public/about.html` with some content.
+2. Serve it from `GET /about`.
+3. Now run your server from a **different folder** using `node ../path/to/lesson3.js`. Does it still work? Why?
+
+---
+
+## 🛠️ Part 4: `express.static`: A Whole Folder at Once
+
+Writing one route per file is boring. Use:
+
+```js
+app.use(express.static(path.join(__dirname, "public")));
+```
+
+Now every file in `public` is available by name:
+
+```
+public/hello.html   →  /hello.html
+public/about.html   →  /about.html
+public/style.css    →  /style.css
+public/index.html   →  /        (index.html is the default for "/")
+```
+
+**Under the hood:** `express.static` is a **middleware**: a function that sits in Express's list like a route. For each request it does this:
+
+```
+Request: GET /style.css
+   ↓
+Does public/style.css exist?
+   ├─ YES → send the file, STOP ✅
+   └─ NO  → call next()  (meaning: "I can't help, ask the next item in the list")
+```
+
+`next()` is how one item in the list passes the request to the next one. We study this deeply in Level 2. 🔑
+
+**What breaks?**
+- Put `express.static` **below** your routes. Routes with the same path would win first. **Order matters, again!**
+- Delete `public/style.css` → the request falls through to the rest of the list and ends in `Cannot GET /style.css`.
+
+### ⚡ Mini Challenge 4 (20 XP)
+1. Create `public/index.html` that links to `style.css`.
+2. Create `public/style.css` that changes the page's background color.
+3. Add `express.static`. Visit `http://localhost:3000/`.
+4. Open DevTools → **Network** tab. How many requests did the browser send for this one page? Why more than one?
+
+---
+
+## 🛠️ Part 5: The "Nothing Matched" Route
+
+```js
+// Put this at the very BOTTOM, after all routes
+app.use((req, res) => {
+  res.status(404).send("<h1>404: Nothing here 🕳️</h1>");
+});
+```
+
+`app.use(fn)` with no path matches **every method and every path**. At the bottom of the list, it only runs if **nothing above it** handled the request. It is your own custom 404 page.
+
+**What breaks?** Move it to the **top**. Now every request gets the 404, and no other route ever runs.
+
+### ⚡ Mini Challenge 5 (20 XP)
+Add the 404 route at the bottom. Then **break it on purpose**: move it to the top, test `/hello`, and explain in one sentence why it fails.
+
+---
+
+## ⚔️ Main Challenges
 
 **⚔️ Challenge 1: Foundation (30 XP)**
-Build two routes:
-- `GET /greet/:name` → `Hello, <name>!`
-- `GET /add/:a/:b` → the **sum** of a and b (as a number!)
+Build a small static site in a new project folder:
+- `public/index.html` (home), `public/about.html`, `public/style.css`
+- Links between the pages
+- Use `express.static`
+- Add a custom 404 page that **also** uses your CSS (hint to think about: what does the 404 HTML need to link to?)
 
-Test `/add/5/7`. Do you get `12` or `57`? Why?
+**⚔️ Challenge 2: Real-world (40 XP)**
+Add these routes to the same project:
+- `GET /old-page` → redirects to `/about.html`
+- `GET /api/time` → returns JSON: `{ "time": "..." }` with the current time
+- `GET /api/time` must also send a custom header `X-Server: my-express`
 
-> 💡 `res.send(12)` has a special meaning in Express. Try it and see what happens. Then fix it. This is a real bug that bites many people.
+Test every route with `curl -i` and write down each status code.
 
-**⚔️ Challenge 2: Real-world (50 XP)**
-Use this array:
-
-```js
-const products = [
-  { id: 1, name: "Laptop", category: "tech", price: 900 },
-  { id: 2, name: "Phone", category: "tech", price: 500 },
-  { id: 3, name: "Chair", category: "home", price: 120 },
-  { id: 4, name: "Lamp", category: "home", price: 40 },
-];
-```
-
-Build `GET /products`:
-- no query → send all products
-- `?category=tech` → only that category
-- `?maxPrice=500` → only products with price ≤ 500
-- both together must work: `?category=tech&maxPrice=500`
-
-**⚔️ Challenge 3: Stack it all 🧠 (80 XP)**
-Build a mini book API. It uses **Lessons 1, 2, and 3** together.
+**⚔️ Challenge 3: Brain stretch (60 XP)**
+You have **both** of these in your app, in this order:
 
 ```js
-const books = [
-  { id: 1, title: "Atomic Habits", author: "James Clear" },
-  { id: 2, title: "Deep Work", author: "Cal Newport" },
-  { id: 3, title: "Clean Code", author: "Robert Martin" },
-];
+app.use(express.static(path.join(__dirname, "public")));
+app.get("/", (req, res) => res.send("From the route"));
 ```
 
-Routes:
-1. `GET /books` → all books. With `?author=...` → only matching books.
-2. `GET /books/:id` → one book. If it does not exist → status **404** with a message.
-3. `POST /books` → send `"Book added"` (no real saving yet, we need more tools first).
-4. `DELETE /books/:id` → send `"Deleted book <id>"`.
-5. `GET /books/latest` → send the **last** book in the array.
+And `public/index.html` exists.
 
-⚠️ **Trap inside:** when you build route 5, test it. Does it work? If not, you know why from the table above. Fix it, and **explain the fix in your own words**.
+1. **Predict:** what does `/` show?
+2. Test it. Was your prediction right?
+3. Explain **why** with the list idea.
+4. Swap the two lines. What changes now?
 
-**Bonus XP:**
-- 🏆 +10 XP per challenge with no hint
-- 🧠 +20 XP: explain back: *"What is the difference between a param and a query, and when do I use each?"*
+**🐞 Bug Hunt (30 XP):** find **2 bugs** before running:
 
-## 🪜 Stuck?
+```js
+app.get("/report", (req, res) => {
+  res.sendFile("public/report.html");
+  res.send("Done");
+});
+```
 
-Struggle **20 minutes**. Try this first:
-- `console.log(req.params)` and `console.log(req.query)` at the top of the route. Look at what Express **really** gives you.
-- Check the types: `console.log(typeof req.params.id)`.
-- Then ask for `Hint 1`.
+*(Think about: path type, and what happens when you send twice.)*
 
-Commit: `git commit -m "Lesson 3: params and query"` 💾
+---
+
+## 👹 BOSS BATTLE #1 (100 XP + 50 bonus for no hints)
+
+**Mix of Lessons 1, 2, and 3. No hints at first!**
+
+Take your **Notes API** from Lesson 2 and give it a face:
+
+1. Serve `public/index.html` with a title, a text input, an "Add" button, and an empty list.
+2. The page uses `fetch("/notes")` to load notes and show them in the list.
+3. The "Add" button sends a `POST /notes` with the input's text, then refreshes the list.
+4. A second input does a search using `GET /notes?search=...`.
+5. Unknown URLs show your custom 404 page.
+
+**Rules:**
+- ⏱️ Struggle at least **20 minutes** before asking for any hint.
+- 📝 Write down every bug you hit and how you found it. That is training for your "don't quit when it's hard" skill.
+- 🧠 +20 XP when you finish: explain the **full flow** of one click on "Add", from button to server and back.
+
+**Bonus XP:** 🏆 +10 per challenge with no hint.
 
 ---
 
@@ -205,6 +284,8 @@ Commit: `git commit -m "Lesson 3: params and query"` 💾
 
 | 🏅 Level | ⭐ XP | 🔥 Streak |
 |---|---|---|
-| 1 (Newbie) | 0 (+390 XP waiting for you!) | Day 1 |
+| 1 (Newbie) | 0 (Lessons 2 and 3 XP waiting: up to **~600 XP**) | Day 1 |
 
-**⏭️ Next:** ⚔️ **Boss Battle #1**: a hard problem that mixes Lessons 1 to 3, no hints at first. After that, Lesson 4: **Middleware**, the heart of Express. 🔥
+**⏭️ Next lesson:** Lesson 4, **Middleware**: how `next()` really works, and how to write your own. This is the heart of Express. ❤️
+
+Send me your code, one challenge at a time, and I'll review it. 🚀
